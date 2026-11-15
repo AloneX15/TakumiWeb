@@ -5,6 +5,7 @@ import { checkEmail, checkPassword, checkUsername } from '$lib/validation';
 import { hashPassword, purgeExpiredSessions } from './auth';
 import { db, runMigrations } from './db';
 import { users } from './db/schema';
+import { purgeExpiredTickets } from './instances/gate';
 import { findConflict, firstAdminIdentity } from './users';
 
 /** Apply pending migrations and create the first administrator from the environment. */
@@ -12,8 +13,13 @@ export async function bootstrap() {
   checkOrigin();
   await runMigrations();
   await seedAdmin();
+  await purgeExpired();
+  setInterval(() => purgeExpired().catch(console.error), 6 * 60 * 60 * 1000).unref();
+}
+
+async function purgeExpired() {
   await purgeExpiredSessions();
-  setInterval(() => purgeExpiredSessions().catch(console.error), 6 * 60 * 60 * 1000).unref();
+  await purgeExpiredTickets();
 }
 
 /**

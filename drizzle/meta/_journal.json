@@ -8,6 +8,20 @@
       "when": 1794702511140,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794745993680,
+      "tag": "0001_private_instances",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794760455536,
+      "tag": "0002_takumi_gate",
+      "breakpoints": true
     }
   ]
 }

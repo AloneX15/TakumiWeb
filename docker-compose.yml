@@ -16,11 +16,17 @@ services:
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@takumilabs.org}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       RELEASE_API_TOKEN: ${RELEASE_API_TOKEN:-}
+      # Private instances: manifest signing key, file storage and upload size (mods are large).
+      MANIFEST_SIGNING_KEY: ${MANIFEST_SIGNING_KEY:-}
+      STORAGE_DIR: /app/data/storage
+      BODY_SIZE_LIMIT: 600M
       # Real client IPs for rate limiting. Only correct when every request comes through exactly
       # one proxy that appends the peer address (nginx `$proxy_add_x_forwarded_for`, Caddy and
       # Traefik by default). Raise XFF_DEPTH if there are more trusted hops (e.g. Cloudflare + nginx).
       ADDRESS_HEADER: X-Forwarded-For
       XFF_DEPTH: '1'
+    volumes:
+      - storage:/app/data/storage
     depends_on:
       db:
         condition: service_healthy
@@ -41,3 +47,4 @@ services:
 
 volumes:
   pgdata:
+  storage:

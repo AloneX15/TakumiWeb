@@ -25,7 +25,7 @@
   >
     {#if form?.error}<div class="alert error">{form.error}</div>{/if}
     <label class="field">
-      <span>Nombre de usuario</span>
+      <span>Nombre de usuario (tu nombre en Minecraft)</span>
       <input
         name="username"
         value={form?.username ?? ''}
@@ -36,7 +36,10 @@
         title={USERNAME_RULE}
         required
       />
-      <small class="muted">{USERNAME_RULE}</small>
+      <small class="muted">
+        {USERNAME_RULE} Si no tienes Minecraft premium, jugarás con este nombre en Takumi Launcher. No se puede cambiar
+        después.
+      </small>
     </label>
     <label class="field">
       <span>Correo electrónico</span>

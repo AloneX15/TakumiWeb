@@ -51,6 +51,7 @@
         {#if menuOpen}
           <div class="menu card">
             <a href="/cuenta">Mi cuenta</a>
+            <a href="/instancias">Instancias privadas</a>
             {#if staff}<a href="/admin">Panel de administración</a>{/if}
             <form method="POST" action="/logout">
               <button class="ghost">Cerrar sesión</button>

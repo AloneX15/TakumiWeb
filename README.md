@@ -48,13 +48,23 @@ The app is stateless apart from the database, so it can run as several instances
 - Users (admin only): search and filter, create users with a role, edit username/e-mail/role, reset password,
   suspend with a reason, close sessions, delete. The last active administrator cannot be demoted, suspended or deleted
 
+**Private instances** (`/instancias`)
+- Event instances only invited members can play; members are added by name or with an invite link (`/i/<token>`)
+- Web file manager for the whole game folder (upload folders, edit configs, move, delete), with drafts and signed,
+  numbered versions; locked folders stop players from adding their own mods
+- Roles per instance: owner, manager, member. The launcher always updates to the published version before playing,
+  keeps event mods and packs encrypted on disk and marks each copy with the player's name
+- Event server key for the **Takumi Gate** mod: only members launching from Takumi Launcher can join, and players on an
+  old version are warned and disconnected when the grace period of a mandatory update ends.
+  See [docs/launcher-integration.md §7](docs/launcher-integration.md#7-private-instances)
+
 **Roles**
 
 | Role | Can do |
 | --- | --- |
-| `user` | Use the launcher and the account pages |
-| `editor` | + news and releases in the admin panel |
-| `admin` | + user management |
+| `user` | Use the launcher and the account pages; be a member of private instances |
+| `editor` | + news and releases in the admin panel; create private instances |
+| `admin` | + user management; manage every private instance |
 
 ## Getting started
 

@@ -15,6 +15,7 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/package.json ./
 COPY --from=build /app/drizzle ./drizzle
 COPY --from=build /app/static ./static
+RUN mkdir -p /app/data/storage && chown -R node:node /app/data
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s CMD wget -qO- http://127.0.0.1:3000/api/health || exit 1

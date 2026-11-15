@@ -26,8 +26,11 @@ in sync with `apps/launcher/src-tauri/src/session.rs` and `.github/workflows/rel
 4. The sidebar shows the Takumi username (a link to `{web}/cuenta`) and a **"Cerrar sesión"** button.
 5. The **"Iniciar sesión con Microsoft"** button is a placeholder for now: it only shows a "coming soon" notice.
 
-The Takumi account is the launcher's own identity. Minecraft accounts (offline profiles and Microsoft accounts in
-the launcher's *Cuentas* view) are separate and unchanged.
+The Takumi account is the launcher's own identity. It also names the player's **offline profile**: the launcher
+creates exactly one, named after `user.username` (registration enforces the Minecraft name rules and usernames are
+unique, case-insensitive), with the vanilla offline-mode UUID. Players cannot create other offline names. A Microsoft
+(premium) account added in *Cuentas* takes priority and is selected by default. If an admin renames a user, the
+launcher picks up the new name the next time it checks the session (`/api/launcher/me`).
 
 ### How it works
 
@@ -248,3 +251,140 @@ cargo tauri dev
 | Versions | Semver `MAJOR.MINOR.PATCH[-pre]`; pre-releases sort before the release |
 | Web session | 30 days, renewed while in use |
 | Launcher session | 90 days, renewed while in use |
+
+## 7. Private instances
+
+Event instances that only invited members can play. The organizer manages the whole game folder on the website;
+the launcher keeps every member's copy identical to the published version.
+
+### Roles
+
+| Level | Role | Can do |
+| --- | --- | --- |
+| Site | `editor`, `admin` | Create private instances. An `admin` can also open and manage every instance (moderation) |
+| Instance | `owner` | Everything, including deleting the instance and adding or removing managers/owners |
+| Instance | `manager` | Files, members (plain members only), invite links, publishing |
+| Instance | `member` | Download and play |
+
+An instance always keeps at least one owner. Users without access get a 404 for its pages and API, so instance
+ids cannot be probed.
+
+### Members
+
+- **Manually:** *Miembros → Añadir miembro* with a Takumi username or e-mail.
+- **Invite link:** *Miembros → Enlace de invitación* creates `{web}/i/<token>` with a role, an optional use limit and an
+  expiry. Only the SHA-256 of the token is stored, so the link is shown once. Opening it asks the user to sign in and
+  confirm. The launcher's *Unirse con un enlace* accepts the same link through the API.
+- Removing a member (or revoking a link) takes effect at once: the API stops serving the manifest and files.
+
+### Files, drafts and publishing
+
+- *Archivos* is a file manager for the instance's game folder: upload files or whole folders (drag and drop), create
+  folders, rename/move, delete, download, and edit text files (`.json`, `.toml`, `.properties`, `.txt`…) in the
+  browser. Paths are checked with the same rules as the launcher (`src/lib/instance-paths.ts`); executables
+  (`.exe`, `.bat`…) are refused.
+- Uploads stream to `STORAGE_DIR`, stored once per SHA-256. Each instance has a quota (4 GB by default) and files are
+  limited to 512 MB.
+- Changes go to a **draft**. *Publicar* writes a new numbered version: a manifest listing every file with its SHA-256,
+  size and policy, signed with Ed25519 (`MANIFEST_SIGNING_KEY`). Members only ever see published versions.
+- Per-file policy: **Sobrescribir** (`enforced`, default) keeps the file identical to the instance; **Solo si falta**
+  (`default`, default for `options.txt`) is copied once so players keep their own settings.
+- **Locked folders** (`mods/` by default; also `resourcepacks/`, `shaderpacks/`, `config/`, `datapacks/`): the launcher
+  removes anything in them that is not in the manifest, so players cannot add their own mods.
+- Each version records whether it needs a game restart (anything beyond resource packs changed) and a grace period;
+  both are used by the in-game update notice (planned).
+
+### In the launcher
+
+- *Instancias → Instancias privadas* lists the instances the user belongs to, with *Descargar*, *Actualizar
+  (obligatorio)* or *Jugar*.
+- **Every launch updates first.** The launcher fetches the manifest, verifies its signature with the public key it was
+  built with (`TAKUMI_MANIFEST_PUBKEY`), downloads missing or modified files (SHA-256 checked), deletes files the
+  organizer removed and moves anything extra in locked folders to `instances/<id>/quarantine/`. An outdated version
+  cannot be played, and a private instance cannot start offline.
+- Private instances cannot be changed from the launcher: content install/remove/disable, *Abrir carpeta* and
+  *Duplicar* are refused. Memory, Java and window settings stay editable.
+- When the instance has a server address, the game joins it directly (quick play on 1.20+, `--server` before).
+- **Encrypted storage (vault).** Enforced files under `mods/`, `resourcepacks/` and `shaderpacks/` are stored only
+  encrypted (AES-256-GCM) in `instances/<id>/vault/objects/<sha256>.tkv`, with a per-member key from
+  `/vault-key` that the launcher keeps in memory. They are decrypted into the game folder right before the game starts
+  and deleted when it exits (and on the next start after a crash). Each decrypted `.jar`/`.zip` carries
+  "copia de <usuario>" in its zip comment. The instance folder is hidden (hidden + system attributes on Windows).
+- **Locked while playing.** Once the game reaches the title screen, Takumi Gate opens every mod jar and writes
+  `.takumi/loaded.json`; the launcher then denies read access to `mods/` and `.fabric/processedMods/` (the jars Fabric
+  extracts from other jars) for everybody. The running game keeps its open files; copying or listing them fails. Access
+  is restored and everything deleted when the game exits. Without Takumi Gate in the instance there is no lock.
+- **Join ticket.** Before starting, the launcher asks for a ticket for the Minecraft account and passes it to the game
+  in `TAKUMI_GATE_TICKET`; the Takumi Gate mod presents it to the event server.
+- **While playing.** The launcher checks `/status` every 30 s. A version that only changes resource packs is
+  downloaded, decrypted and enabled in the running game. Any other version shows a notice in the launcher and in the
+  game; *Reiniciar y actualizar* (or `/takumi reiniciar` in game) closes the game and starts it again updated.
+
+### Takumi Gate (event server)
+
+[Takumi Gate](https://github.com/AloneX15/TakumiGate) is a Fabric mod for the event server and the players (upload the
+same jar to the instance's `mods/`). In *Ajustes → Servidor del evento* a manager generates a **server key**
+(`tgk_…`, shown once, only its SHA-256 is stored; generating a new one revokes the old one) and pastes the shown
+config into the server's `config/takumi_gate.json`. Then the server:
+
+- asks every joining client for its ticket during login and checks it with `/api/gate/verify` against the profile
+  Minecraft authenticated: non-members, expelled members (their tickets are deleted at once), other Minecraft accounts
+  and players without Takumi Launcher are refused before entering the world;
+- polls `/api/gate/status` and, for players on a version older than one that needs a restart, shows a title and chat
+  notice, reminds them at 10, 5 and 1 minutes and disconnects them when the grace period ends.
+
+Tickets last 12 hours and are bound to the Takumi user, the instance, the Minecraft account and the installed version.
+Prefer `online-mode=true`: the ticket is then checked against the id Mojang authenticated. On offline-mode servers
+(non-premium accounts) it is checked by name, so a stolen ticket would let someone join under that name.
+
+### API
+
+All need `Authorization: Bearer <launcher token>`.
+
+| Endpoint | Result |
+| --- | --- |
+| `GET /api/launcher/instances` | `{ instances: [{ id, name, description, minecraft, loader, loader_version, server, version, role }] }`; `version` 0 = nothing published |
+| `GET /api/launcher/instances/:id/manifest` | `{ version, manifest, signature }`; `manifest` is the exact signed JSON text. 404 if not a member or nothing published |
+| `GET /api/launcher/instances/:id/files/:sha256` | The file bytes, only for hashes in the latest published manifest |
+| `POST /api/launcher/invites/:token/accept` | `{ instance_id, already_member }` or 400 `{ error }` |
+| `GET /api/launcher/manifest-key` (no auth) | `{ public_key }`: raw Ed25519 key, base64. Used by local development builds only |
+| `GET /api/launcher/instances/:id/status?since=<v>` | `{ version, restart_required, grace_minutes, notes, published_at }`; `restart_required` is true when a release after `v` changed anything but resource packs |
+| `GET /api/launcher/instances/:id/vault-key` | `{ id, key }`: base64 AES-256 key of this member's vault (HMAC of the signing key, instance and user; never stored). `id` changes if the signing key changes |
+| `POST /api/launcher/instances/:id/ticket` | Body `{ uuid, name, version }` → `{ ticket, expires_at }`. 400 for a bad account or a version that is not published |
+
+Takumi Gate endpoints take `Authorization: Bearer <server key>` instead:
+
+| Endpoint | Result |
+| --- | --- |
+| `POST /api/gate/verify` | Body `{ ticket, uuid }` (online-mode server) or `{ ticket, name }` (offline-mode server, where ids are derived from names) → `200 { ok: true, username, version, current_version, restart_required }`, `403 { ok: false, error }` (refuse the player with `error`), `401` unknown key |
+| `GET /api/gate/status` | `{ instance, name, version, releases: [{ version, restart_required, grace_minutes, notes, published_at }] }`, newest first |
+
+Manifest format (`format: 1`, keep in sync with `packages/manifest-system` in the launcher):
+
+```json
+{
+  "format": 1, "instance": "<uuid>", "name": "Evento", "version": 3,
+  "minecraft": "1.21.1", "loader": "fabric", "loader_version": null, "server": "play.example.com",
+  "locked_dirs": ["mods"], "restart_required": true, "grace_minutes": 5,
+  "published_at": "2026-11-15T12:00:00.000Z",
+  "files": [{ "path": "mods/event.jar", "sha256": "…", "size": 12345, "policy": "enforced" }]
+}
+```
+
+### Setting up the key
+
+1. Generate `MANIFEST_SIGNING_KEY` (command in `.env.example`) and set it on the server. Keep it secret.
+2. Read the public key from `GET /api/launcher/manifest-key` and store it as the `TAKUMI_MANIFEST_PUBKEY` secret of the
+   launcher repository; the release workflow embeds it.
+3. Changing the key later requires a new launcher release.
+
+In development no key is needed: the website creates one in `./data/manifest-signing-key.der` and launcher builds
+pointing at `localhost` fetch the public key.
+
+### What this does not protect against
+
+Files that run on the player's computer can always be copied by someone determined: while the game runs, the decrypted
+mods are in the game folder (Fabric loads them from there) and in memory. The vault only protects them while the game
+is closed, and the watermark says whose copy leaked unless someone strips the zip comment. Keep the valuable parts on
+the server (server-side mods, plugins, datapacks). The vault key is derived from `MANIFEST_SIGNING_KEY`: changing that
+key makes every launcher download the event files again.

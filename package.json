@@ -20,6 +20,7 @@
     "@sveltejs/vite-plugin-svelte": "^6.2.4",
     "@types/node": "^22.20.5",
     "@types/sanitize-html": "^2.16.2",
+    "@types/three": "^0.187.0",
     "autocannon": "^9.0.0",
     "drizzle-kit": "^0.31.11",
     "svelte": "^5.57.3",
@@ -32,8 +33,10 @@
     "@electric-sql/pglite": "^0.5.16",
     "@node-rs/argon2": "^2.2.2",
     "drizzle-orm": "^0.45.4",
+    "gsap": "^3.15.1",
     "marked": "^18.2.0",
     "postgres": "^3.4.9",
-    "sanitize-html": "^2.18.2"
+    "sanitize-html": "^2.18.2",
+    "three": "^0.187.0"
   }
 }

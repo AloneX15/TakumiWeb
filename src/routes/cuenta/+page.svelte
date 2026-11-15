@@ -53,6 +53,10 @@
     <div>
       <h2>{user.username}</h2>
       <p class="muted small">{user.email}</p>
+      <p class="muted small">
+        Nombre en Minecraft sin cuenta premium: <strong>{user.username}</strong>. Si inicias sesión con Microsoft en el
+        launcher, se usa tu cuenta premium.
+      </p>
     </div>
     <div class="spacer"></div>
     <div class="meta small muted">
