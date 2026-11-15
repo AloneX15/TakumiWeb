@@ -22,7 +22,7 @@ export const actions: Actions = {
     if (password !== confirm) return fail(400, { ...values, error: 'Las contraseñas no coinciden.' });
     if (!registerLimiter.take(clientKey(event))) return fail(429, { ...values, error: RATE_LIMIT_MESSAGE });
 
-    const result = await createUser({ username, email, password });
+    const result = await createUser({ username, email, password, selfService: true });
     if (!result.ok) return fail(400, { ...values, error: result.error });
 
     const { token, expiresAt } = await createSession(result.id, 'web', event.request.headers.get('user-agent'));

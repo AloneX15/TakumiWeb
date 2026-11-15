@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { checkVersion } from '$lib/validation';
+import { checkUrl, checkVersion } from '$lib/validation';
 import { invalidateContent } from './cache';
 import { db } from './db';
 import { releases, type ReleaseChannel } from './db/schema';
@@ -16,15 +16,7 @@ export type ReleaseInput = {
   publish: boolean;
 };
 
-export function checkUrl(value: string | null, label: string): string | null {
-  if (!value) return null;
-  try {
-    const url = new URL(value);
-    return url.protocol === 'https:' || url.protocol === 'http:' ? null : `${label}: debe ser una URL http(s).`;
-  } catch {
-    return `${label}: URL no válida.`;
-  }
-}
+export { checkUrl };
 
 export function validateRelease(input: ReleaseInput): string | null {
   return (
@@ -36,6 +28,17 @@ export function validateRelease(input: ReleaseInput): string | null {
       ? 'Tamaño de archivo no válido.'
       : null)
   );
+}
+
+/**
+ * True when `input` would point an already published version at a different installer. Launchers
+ * and visitors may already have downloaded the original, so a new build needs a new version.
+ */
+export async function changesPublishedInstaller(input: ReleaseInput) {
+  const [existing] = await db.select().from(releases).where(eq(releases.version, input.version)).limit(1);
+  if (!existing?.publishedAt) return false;
+  const sameHash = (existing.sha256 ?? '') === (input.sha256?.toLowerCase() ?? '');
+  return existing.downloadUrl !== input.downloadUrl || !sameHash;
 }
 
 /** Create or update a release by version. Publishing keeps the original publish date. */

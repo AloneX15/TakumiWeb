@@ -108,7 +108,14 @@ launchers on older versions show the update notice.
 Without these secrets the GitHub release is still created and the website step is skipped with a warning; the
 release can then be added by hand in **Admin → Versiones → Nueva versión**.
 
-Re-running the workflow for the same tag updates the existing release on the website instead of duplicating it.
+Re-running the workflow for the same tag updates the existing release on the website instead of duplicating it, as
+long as the installer is the same. Once a version is published its installer cannot be swapped through the API
+(`409`): builds are not byte-for-byte reproducible, so a rebuilt installer needs a new version number. An editor can
+still correct the link by hand in **Admin → Versiones**.
+
+The release job runs in the GitHub environment `release`. Add required reviewers to it (*Settings → Environments →
+release*) so that pushing a tag alone cannot publish an update to every launcher.
+
 Unpublishing a release in the admin panel hides it from the downloads page and from the update check. Its GitHub
 release is not touched.
 
@@ -129,7 +136,7 @@ user.
 | 400 | Missing user or password |
 | 401 | `Usuario o contraseña incorrectos.` |
 | 403 | `Esta cuenta está suspendida. Motivo: …` |
-| 429 | Too many attempts (10 per 10 minutes per IP and user) |
+| 429 | Too many attempts: 10 per 10 minutes per address and account, 50 per hour per account, 60 per 10 minutes per address |
 
 ### `GET /api/launcher/me`
 
@@ -198,8 +205,9 @@ one with the same version.
 }
 ```
 
-Only `version` (`1.2.3` or `1.2.3-beta.1`; a leading `v` is accepted) and `download_url` are required. Answers
-`201` when created, `200` when updated, `401` with a wrong token and `503` when the server has no
+Only `version` (`1.2.3` or `1.2.3-beta.1`; a leading `v` is accepted) and `download_url` are required. URLs must be
+`https`. Answers `201` when created, `200` when updated, `400` for invalid data, `401` with a wrong token, `409` when
+the version is already published with a different `download_url` or `sha256`, and `503` when the server has no
 `RELEASE_API_TOKEN`.
 
 ### `GET /api/health`
@@ -215,6 +223,10 @@ The launcher picks the website URL in this order. It is used for the API calls a
 2. `TAKUMI_WEB_URL` when the launcher was **compiled** (the `Release` workflow sets it to the `TAKUMI_WEB_URL`
    secret, or `https://takumilabs.org` if the secret is missing)
 3. `http://localhost:5173`, the `pnpm dev` server of this repo
+
+Only `https://` URLs are accepted, plus plain `http://` to `localhost`, `127.0.0.1` or `[::1]`. Anything else is
+ignored, because passwords and the session token are sent to this URL. The launcher can also only open `https` links,
+or `http` links to this machine, in the browser.
 
 So a local build of the launcher works against a local `pnpm dev` with no configuration. The dev server is pinned
 to port 5173 (`strictPort`) for that reason. If it cannot be reached, the launcher asks you to start it with

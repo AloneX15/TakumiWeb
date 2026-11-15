@@ -1,7 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { SESSION_COOKIE, checkCredentials, cookieOptions, createSession } from '$lib/server/auth';
+import { SESSION_COOKIE, checkCredentials, cookieOptions, createSession, deleteSession } from '$lib/server/auth';
 import { clientKey, safeNext } from '$lib/server/guards';
-import { RATE_LIMIT_MESSAGE, loginLimiter } from '$lib/server/rate-limit';
+import { RATE_LIMIT_MESSAGE, takeLoginAttempt } from '$lib/server/rate-limit';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = ({ locals, url }) => {
@@ -15,12 +15,14 @@ export const actions: Actions = {
     const password = String(form.get('password') ?? '');
 
     if (!login || !password) return fail(400, { login, error: 'Escribe tu usuario o correo y tu contraseña.' });
-    if (!loginLimiter.take(`${clientKey(event)}:${login.toLowerCase()}`)) {
-      return fail(429, { login, error: RATE_LIMIT_MESSAGE });
-    }
+    if (!takeLoginAttempt(clientKey(event), login)) return fail(429, { login, error: RATE_LIMIT_MESSAGE });
 
     const result = await checkCredentials(login, password);
     if (!result.ok) return fail(result.status, { login, error: result.message });
+
+    // The new cookie replaces any previous one: close that session instead of leaving it orphaned.
+    const previous = event.cookies.get(SESSION_COOKIE);
+    if (previous) await deleteSession(previous);
 
     const { token, expiresAt } = await createSession(
       result.user.id,

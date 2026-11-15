@@ -4,7 +4,7 @@ import { deleteSessionById, deleteUserSessions, hashPassword } from '$lib/server
 import { db } from '$lib/server/db';
 import { posts, sessions, users, type Role } from '$lib/server/db/schema';
 import { requireUser } from '$lib/server/guards';
-import { countAdmins, findConflict } from '$lib/server/users';
+import { findConflict, guardLastAdmin } from '$lib/server/users';
 import { checkEmail, checkPassword, checkUsername, normalizeEmail } from '$lib/validation';
 import type { Actions, PageServerLoad, RequestEvent } from './$types';
 
@@ -19,10 +19,7 @@ async function target(event: RequestEvent) {
   return { admin, user, self: admin.id === user.id };
 }
 
-/** Refuse changes that would leave the site without an active administrator. */
-async function wouldRemoveLastAdmin(user: { role: Role; bannedAt: Date | null }) {
-  return user.role === 'admin' && !user.bannedAt && (await countAdmins()) <= 1;
-}
+const LAST_ADMIN = 'Debe quedar al menos un administrador activo.';
 
 export const load: PageServerLoad = async (event) => {
   const { user, self } = await target(event);
@@ -71,13 +68,12 @@ export const actions: Actions = {
     if (problem) return fail(400, { action: 'profile', error: problem });
     const conflict = await findConflict(username, email, user.id);
     if (conflict) return fail(400, { action: 'profile', error: conflict });
-    if (role !== user.role) {
-      if (self) return fail(400, { action: 'profile', error: 'No puedes cambiar tu propio rol.' });
-      if (await wouldRemoveLastAdmin(user)) {
-        return fail(400, { action: 'profile', error: 'Debe quedar al menos un administrador.' });
-      }
-    }
-    await db.update(users).set({ username, email, role }).where(eq(users.id, user.id));
+    if (role !== user.role && self) return fail(400, { action: 'profile', error: 'No puedes cambiar tu propio rol.' });
+    const demotesAdmin = user.role === 'admin' && role !== 'admin';
+    const saved = await guardLastAdmin(user.id, demotesAdmin, (tx) =>
+      tx.update(users).set({ username, email, role }).where(eq(users.id, user.id)),
+    );
+    if (!saved) return fail(400, { action: 'profile', error: LAST_ADMIN });
     return { action: 'profile', success: 'Datos guardados.' };
   },
 
@@ -95,9 +91,11 @@ export const actions: Actions = {
   ban: async (event) => {
     const { user, self } = await target(event);
     if (self) return fail(400, { action: 'ban', error: 'No puedes suspender tu propia cuenta.' });
-    if (await wouldRemoveLastAdmin(user)) return fail(400, { action: 'ban', error: 'Debe quedar al menos un administrador.' });
     const reason = String((await event.request.formData()).get('reason') ?? '').trim().slice(0, 300) || null;
-    await db.update(users).set({ bannedAt: new Date(), banReason: reason }).where(eq(users.id, user.id));
+    const banned = await guardLastAdmin(user.id, user.role === 'admin', (tx) =>
+      tx.update(users).set({ bannedAt: new Date(), banReason: reason }).where(eq(users.id, user.id)),
+    );
+    if (!banned) return fail(400, { action: 'ban', error: LAST_ADMIN });
     // A suspended account is signed out of the web and every launcher.
     await deleteUserSessions(user.id);
     return { action: 'ban', success: 'Cuenta suspendida y sesiones cerradas.' };
@@ -126,10 +124,10 @@ export const actions: Actions = {
   delete: async (event) => {
     const { user, self } = await target(event);
     if (self) return fail(400, { action: 'delete', error: 'No puedes eliminar tu propia cuenta desde aquí.' });
-    if (await wouldRemoveLastAdmin(user)) {
-      return fail(400, { action: 'delete', error: 'Debe quedar al menos un administrador.' });
-    }
-    await db.delete(users).where(eq(users.id, user.id));
+    const deleted = await guardLastAdmin(user.id, user.role === 'admin', (tx) =>
+      tx.delete(users).where(eq(users.id, user.id)),
+    );
+    if (!deleted) return fail(400, { action: 'delete', error: LAST_ADMIN });
     redirect(303, '/admin/usuarios');
   },
 };

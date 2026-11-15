@@ -48,7 +48,4 @@ export function clientKey(event: Pick<RequestEvent, 'getClientAddress'>) {
   }
 }
 
-/** Only same-site paths, to avoid open redirects. */
-export function safeNext(value: string | null) {
-  return value && /^\/(?![/\\])/.test(value) ? value : '/';
-}
+export { safeNext } from './redirect';

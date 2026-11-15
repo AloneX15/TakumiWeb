@@ -17,4 +17,14 @@ describe('renderMarkdown', () => {
   it('opens external links in a new tab', () => {
     expect(renderMarkdown('[web](https://takumilabs.org)')).toContain('rel="noopener noreferrer"');
   });
+
+  it('keeps relative links but drops protocol-relative ones', () => {
+    expect(renderMarkdown('[descargas](/descargas)')).toContain('href="/descargas"');
+    expect(renderMarkdown('[x](//evil.example/a)')).not.toContain('evil.example');
+  });
+
+  it('only allows https images', () => {
+    expect(renderMarkdown('![a](https://cdn.example/a.png)')).toContain('src="https://cdn.example/a.png"');
+    expect(renderMarkdown('![a](http://cdn.example/a.png)')).not.toContain('http://cdn.example');
+  });
 });

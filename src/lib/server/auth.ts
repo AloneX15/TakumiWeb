@@ -124,10 +124,12 @@ export function hasRole(user: Pick<User, 'role'> | null | undefined, role: Role)
   return !!user && RANK[user.role] >= RANK[role];
 }
 
-/** Constant-time comparison for shared secrets (CI release token). */
+/**
+ * Constant-time comparison for shared secrets (CI release token). Both values are hashed first so
+ * the comparison takes the same time whatever their lengths, and the secret's length is not revealed.
+ */
 export function secretMatches(given: string | null | undefined, expected: string | undefined) {
   if (!given || !expected) return false;
-  const a = Buffer.from(given);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
+  const digest = (value: string) => createHash('sha256').update(value).digest();
+  return timingSafeEqual(digest(given), digest(expected));
 }

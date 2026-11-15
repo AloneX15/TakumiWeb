@@ -17,6 +17,10 @@ export function renderMarkdown(source: string): string {
       td: ['align'],
     },
     allowedSchemes: ['http', 'https', 'mailto'],
+    // Images load on every visitor's page: https only, so they are never mixed content.
+    allowedSchemesByTag: { img: ['https'] },
+    // `//host/path` links would leave the site without being marked as external.
+    allowProtocolRelative: false,
     transformTags: {
       a: (tagName, { target: _target, rel: _rel, ...attribs }) => {
         const external = /^https?:\/\//.test(attribs.href ?? '');

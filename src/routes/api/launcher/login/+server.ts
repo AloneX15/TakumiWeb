@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { checkCredentials, createSession, publicUser } from '$lib/server/auth';
 import { apiError, clientKey, readJson, str } from '$lib/server/guards';
-import { RATE_LIMIT_MESSAGE, loginLimiter } from '$lib/server/rate-limit';
+import { RATE_LIMIT_MESSAGE, takeLoginAttempt } from '$lib/server/rate-limit';
 import type { RequestHandler } from './$types';
 
 /**
@@ -14,7 +14,7 @@ export const POST: RequestHandler = async (event) => {
   const login = str(body.user).trim();
   const password = str(body.password);
   if (!login || !password) return apiError(400, 'Escribe tu usuario o correo y tu contraseña.');
-  if (!loginLimiter.take(`${clientKey(event)}:${login.toLowerCase()}`)) return apiError(429, RATE_LIMIT_MESSAGE);
+  if (!takeLoginAttempt(clientKey(event), login)) return apiError(429, RATE_LIMIT_MESSAGE);
 
   const result = await checkCredentials(login, password);
   if (!result.ok) return apiError(result.status, result.message);

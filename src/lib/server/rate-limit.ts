@@ -30,5 +30,23 @@ export class RateLimiter {
 
 export const RATE_LIMIT_MESSAGE = 'Demasiados intentos. Espera unos minutos y vuelve a probar.';
 
-export const loginLimiter = new RateLimiter(10, 10 * 60 * 1000);
-export const registerLimiter = new RateLimiter(5, 60 * 60 * 1000);
+const MINUTE = 60 * 1000;
+
+/** Attempts on one account from one address. */
+export const loginLimiter = new RateLimiter(10, 10 * MINUTE);
+/** Attempts on one account from any address (stops guessing spread over many addresses). */
+export const loginAccountLimiter = new RateLimiter(50, 60 * MINUTE);
+/** Attempts from one address on any account (stops password spraying). */
+export const loginAddressLimiter = new RateLimiter(60, 10 * MINUTE);
+export const registerLimiter = new RateLimiter(5, 60 * MINUTE);
+
+/** Counts one sign-in attempt against every login limit; false when any of them is used up. */
+export function takeLoginAttempt(address: string, login: string): boolean {
+  const account = login.trim().toLowerCase();
+  const results = [
+    loginLimiter.take(`${address}:${account}`),
+    loginAccountLimiter.take(account),
+    loginAddressLimiter.take(address),
+  ];
+  return results.every(Boolean);
+}

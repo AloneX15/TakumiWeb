@@ -37,6 +37,21 @@ export function checkSlug(value: string): string | null {
     : 'El slug solo puede tener letras minúsculas, números y guiones.';
 }
 
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+/** Links shown to every visitor and launcher must be https (plain http only for local testing). */
+export function checkUrl(value: string | null, label: string): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol === 'https:') return null;
+    if (url.protocol === 'http:' && LOCAL_HOSTS.has(url.hostname)) return null;
+    return `${label}: debe ser una URL https.`;
+  } catch {
+    return `${label}: URL no válida.`;
+  }
+}
+
 /** Accepts "1.2.3" and pre-releases like "1.2.3-beta.1". */
 export function checkVersion(value: string): string | null {
   return /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(value) ? null : 'Versión no válida (formato 1.2.3 o 1.2.3-beta.1).';

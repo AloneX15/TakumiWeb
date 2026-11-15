@@ -91,10 +91,10 @@ configuration (see [docs/launcher-integration.md](docs/launcher-integration.md#5
 | `DATABASE_URL` | Production | `postgres://user:pass@host:5432/db`. Empty → embedded PGlite in `./data/pglite` |
 | `PGLITE_DIR` | No | Folder for the embedded database (default `./data/pglite`) |
 | `DATABASE_POOL_SIZE` | No | PostgreSQL connections per instance (default 10) |
-| `ORIGIN` | Production | Public URL, e.g. `https://takumilabs.org`. adapter-node uses it for form CSRF checks |
+| `ORIGIN` | Production | Public URL, e.g. `https://takumilabs.org`. Used for form CSRF checks and the absolute links in the API. The production server refuses to start without it, or with plain `http` other than localhost |
 | `ADMIN_USERNAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | First start | First administrator; ignored once an admin exists |
 | `RELEASE_API_TOKEN` | For CI releases | Shared secret the launcher's GitHub Actions uses to publish releases. Generate with `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"` |
-| `ADDRESS_HEADER`, `XFF_DEPTH` | Behind a proxy | Real client IP for rate limiting, e.g. `X-Forwarded-For` and `1` |
+| `ADDRESS_HEADER`, `XFF_DEPTH` | Behind a proxy | Real client IP for rate limiting, e.g. `X-Forwarded-For` and `1`. Only safe when the app can be reached **solely** through a proxy that appends the peer address, and `XFF_DEPTH` matches the number of trusted proxies |
 | `PORT`, `HOST` | No | Listening address of the production server (default `0.0.0.0:3000`) |
 
 ## Deployment
@@ -111,8 +111,10 @@ EOF
 docker compose up -d --build
 ```
 
-The site listens on port 3000. Put a reverse proxy with HTTPS in front of it (Caddy, Nginx, Traefik, Cloudflare…).
-HTTPS is required in production: session cookies are `Secure` and the launcher talks to `https://takumilabs.org`.
+The site listens on `127.0.0.1:3000`, on the host's loopback only. Put a reverse proxy with HTTPS on the same host in
+front of it (Caddy, Nginx, Traefik…). Do not publish port 3000 on a public interface: the app trusts
+`X-Forwarded-For`, so a client that could reach it directly could pick its own address and get around the sign-in
+limits. HTTPS is required in production: session cookies are `Secure` and the launcher only talks to `https` servers.
 
 ### Without Docker
 
@@ -132,8 +134,9 @@ startup.
 ### Scaling notes
 
 - Run as many instances as needed against the same PostgreSQL; sessions live in the database.
-- Login/registration rate limiting is in memory, per instance. With several instances, add rate limiting at the
-  proxy as well.
+- Login/registration rate limiting is in memory, per instance: 10 attempts per account and address every 10 minutes,
+  50 per account from any address per hour, 60 per address on any account every 10 minutes, and 5 sign-ups per
+  address per hour. With several instances, add rate limiting at the proxy as well.
 - Expired sessions are purged on startup and every 6 hours.
 - Public content (posts, releases, rendered Markdown) is cached in memory for 15 seconds
   (`src/lib/server/cache.ts`). The instance that handles an edit shows it at once; other instances within 15 seconds.
@@ -203,9 +206,18 @@ docs/launcher-integration.md # contract with Takumi Launcher
 - Session tokens are 256-bit random values; only their SHA-256 is stored. Web sessions last 30 days and launcher
   sessions 90 days, both renewed while in use.
 - Cookies are `HttpOnly`, `SameSite=Lax` and `Secure` in production; SvelteKit rejects cross-site form posts.
-- Changing the password closes every other session. Suspending a user closes all of their sessions, launchers
-  included.
-- Markdown is sanitized before rendering; external links get `rel="noopener noreferrer"`.
-- Responses carry `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` and a strict referrer policy.
+- Signing in replaces the browser's previous session instead of leaving it open. Changing the password closes every
+  other session. Suspending a user closes all of their sessions, launchers included.
+- `?next=` redirects after sign-in only go to paths on this site (checked as the browser resolves them).
+- Sign-up does not reveal whether an e-mail already has an account. While no administrator exists, the name and
+  e-mail reserved for the first one (`ADMIN_USERNAME`, `ADMIN_EMAIL`) cannot be registered.
+- The last active administrator cannot be demoted, suspended or deleted; the check locks the admin rows, so two admins
+  acting on each other at once cannot both succeed.
+- Markdown is sanitized before rendering. Images must be https; external links get `rel="noopener noreferrer"`;
+  protocol-relative links are dropped. Cover, download and GitHub URLs must be https (http only for localhost).
+- Responses carry a Content-Security-Policy (scripts only from the site, with a nonce for SvelteKit's own),
+  `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` and a strict referrer policy.
+- The release token is compared in constant time via SHA-256 digests. A published version keeps its installer:
+  `POST /api/releases` with a different `download_url` or `sha256` for it answers `409`.
 
 Takumi Launcher is not an official Minecraft product and is not approved by or associated with Mojang or Microsoft.

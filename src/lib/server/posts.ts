@@ -1,9 +1,8 @@
 import { and, eq, ne } from 'drizzle-orm';
-import { checkSlug, slugify } from '$lib/validation';
+import { checkSlug, checkUrl, slugify } from '$lib/validation';
 import { invalidateContent } from './cache';
 import { db } from './db';
 import { posts, type PostCategory } from './db/schema';
-import { checkUrl } from './releases';
 
 const CATEGORIES: PostCategory[] = ['news', 'update', 'blog'];
 
